@@ -5,11 +5,18 @@ import os
 import pandas as pd
 import json
 
-from keras.models import Sequential
-from keras.layers import Dense, Dropout
-from keras.regularizers import l2
-
 ascontext=None
+
+layer_types = []
+layer_parameters = []
+layer_extras = []
+
+MAX_LAYERS=2
+for layer_index in range(0,MAX_LAYERS):
+    layer_types.append("none")
+    layer_parameters.append("")
+    layer_extras.append("")
+
 if len(sys.argv) > 1 and sys.argv[1] == "-test":
     import os
     wd = os.getcwd()
@@ -17,10 +24,18 @@ if len(sys.argv) > 1 and sys.argv[1] == "-test":
     # specify predictors and target
     fields = ["sepal_length","sepal_width","petal_length","petal_width"]
     target = "species"
-    hidden_layers = [16,0]
+    backend = 'theano'
     num_epochs = 1000
     learning_rate = 0.01
     modelpath = "/tmp/dnn.model"
+
+    layer_types[0] = 'dense'
+    layer_parameters[0] = '16'
+    layer_extras[0] = "activation='tanh' W_regularizer=l2(0.001)"
+    layer_types[1] = 'dropout'
+    layer_parameters[1] = '0.5'
+    layer_extras[1] = ''
+
     modelmetadata_path = "/tmp/dnn.metadata"
     import shutil
     try:
@@ -35,13 +50,57 @@ else:
     df = ascontext.getSparkInputData()
     fields = map(lambda x: x.strip(),"%%fields%%".split(","))
     target = '%%target%%'
-    hidden_layers = json.loads('[%%hidden_layers%%]')
     num_epochs = int('%%num_epochs%%')
-    learning_rate = float('%%learning_rate%%')
+    backend = '%%backend%%'
+
+    layer_types[0] = '%%layer_0_type%%'
+    layer_parameters[0] = '%%layer_0_parameter%%'
+    layer_extras[0] = '%%layer_0_extras%%'
+    layer_types[1] = '%%layer_1_type%%'
+    layer_parameters[1] = '%%layer_1_parameter%%'
+    layer_extras[1] = '%%layer_1_extras%%'
+
     from os import tempnam
     modelpath = tempnam()
     os.mkdir(modelpath)
     df = df.toPandas()
+
+if backend != "default":
+    os.environ["KERAS_BACKEND"] = backend
+
+from keras.models import Sequential
+from keras.layers import Dense, Dropout
+from keras.regularizers import l2
+
+def parseExtras(layer_args,extras):
+    pairs = extras.split()
+    for pair in pairs:
+        pos = pair.index("=")
+        if pos > 0:
+            name = pair[:pos]
+            value = pair[pos+1:]
+            if name not in layer_args:
+                layer_args[name] = eval(value)
+
+class LayerFactory(object):
+
+    def __init__(self,predictor_count):
+        self.predictor_count = predictor_count
+        self.first_layer = True
+
+    def createLayer(self,layer_type,layer_parameter,layer_extras):
+        layer_args = {}
+        parseExtras(layer_args,layer_extras)
+        if self.first_layer:
+            layer_args['input_shape'] = (self.predictor_count,)
+            self.first_layer = False
+        if layer_type == 'dense':
+            sz = int(layer_parameter)
+            return Dense(sz,**layer_args)
+        if layer_type == 'dropout':
+            frac = float(layer_parameter)
+            return Dropout(frac,**layer_args)
+        raise Exception("Invalid layer type:"+layer_type)
 
 # get the list of unique target values
 target_values = list(df[target].unique())
@@ -62,16 +121,13 @@ for target_value in target_values:
 X = df.as_matrix(fields)
 
 model = Sequential()
-model.add(Dense(hidden_layers[0],
-                input_shape=(len(fields),),
-                activation="tanh",
-                W_regularizer=l2(0.001)))
-if hidden_layers[1]:
-    model.add(Dense(hidden_layers[1],
-                activation="tanh",
-                W_regularizer=l2(0.001)))
-model.add(Dropout(0.5))
-model.add(Dense(3, activation="softmax"))
+lf = LayerFactory(len(fields))
+
+for layer_index in range(0,MAX_LAYERS):
+    if layer_types[layer_index] != 'none':
+        model.add(lf.createLayer(layer_types[layer_index],layer_parameters[layer_index],layer_extras[layer_index]))
+
+model.add(Dense(len(target_values), activation="softmax"))
 
 model.compile(loss='categorical_crossentropy',
               metrics=['accuracy'],
