@@ -11,7 +11,7 @@ layer_types = []
 layer_parameters = []
 layer_extras = []
 
-MAX_LAYERS=2
+MAX_LAYERS=6
 for layer_index in range(0,MAX_LAYERS):
     layer_types.append("none")
     layer_parameters.append("")
@@ -59,6 +59,18 @@ else:
     layer_types[1] = '%%layer_1_type%%'
     layer_parameters[1] = '%%layer_1_parameter%%'
     layer_extras[1] = '%%layer_1_extras%%'
+    layer_types[2] = '%%layer_2_type%%'
+    layer_parameters[2] = '%%layer_2_parameter%%'
+    layer_extras[2] = '%%layer_2_extras%%'
+    layer_types[3] = '%%layer_3_type%%'
+    layer_parameters[3] = '%%layer_3_parameter%%'
+    layer_extras[3] = '%%layer_3_extras%%'
+    layer_types[4] = '%%layer_4_type%%'
+    layer_parameters[4] = '%%layer_4_parameter%%'
+    layer_extras[4] = '%%layer_4_extras%%'
+    layer_types[5] = '%%layer_5_type%%'
+    layer_parameters[5] = '%%layer_5_parameter%%'
+    layer_extras[5] = '%%layer_5_extras%%'
 
     from os import tempnam
     modelpath = tempnam()
@@ -69,8 +81,8 @@ if backend != "default":
     os.environ["KERAS_BACKEND"] = backend
 
 from keras.models import Sequential
-from keras.layers import Dense, Dropout
-from keras.regularizers import l2
+from keras.layers import *
+from keras.regularizers import *
 
 def parseExtras(layer_args,extras):
     pairs = extras.split()
@@ -82,6 +94,11 @@ def parseExtras(layer_args,extras):
             if name not in layer_args:
                 layer_args[name] = eval(value)
 
+def parseParameters(parameter_list,parameter):
+    pl = parameter.split(",")
+    for pv in pl:
+        parameter_list.append(eval(pv.strip()))
+
 class LayerFactory(object):
 
     def __init__(self,predictor_count):
@@ -89,17 +106,31 @@ class LayerFactory(object):
         self.first_layer = True
 
     def createLayer(self,layer_type,layer_parameter,layer_extras):
-        layer_args = {}
-        parseExtras(layer_args,layer_extras)
+        layer_pos_args = []
+        parseParameters(layer_pos_args, layer_parameter)
+        layer_dict_args = {}
+        parseExtras(layer_dict_args,layer_extras)
         if self.first_layer:
-            layer_args['input_shape'] = (self.predictor_count,)
+            layer_dict_args['input_shape'] = (self.predictor_count,)
             self.first_layer = False
         if layer_type == 'dense':
-            sz = int(layer_parameter)
-            return Dense(sz,**layer_args)
+            return Dense(*layer_pos_args,**layer_dict_args)
+        if layer_type == 'conv1d':
+            return Conv1D(*layer_pos_args, **layer_dict_args)
+        if layer_type == 'conv2d':
+            return Conv2D(*layer_pos_args, **layer_dict_args)
+        if layer_type == 'conv3d':
+            return Conv3D(*layer_pos_args, **layer_dict_args)
+        if layer_type == 'flatten':
+            return Flatten(*layer_pos_args, **layer_dict_args)
+        if layer_type == 'activation':
+            return Activation(*layer_pos_args, **layer_dict_args)
+        if layer_type == 'reshape':
+            return Reshape(*layer_pos_args, **layer_dict_args)
+        if layer_type == 'dense':
+            return Dense(*layer_pos_args, **layer_dict_args)
         if layer_type == 'dropout':
-            frac = float(layer_parameter)
-            return Dropout(frac,**layer_args)
+            return Dropout(*layer_pos_args,**layer_dict_args)
         raise Exception("Invalid layer type:"+layer_type)
 
 # get the list of unique target values
