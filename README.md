@@ -1,2 +1,2 @@
-# NN_with_TensorFlow
-IBM SPSS Modeler extension for integrating with TensorFlow Neural Networks
+# NN_with_Keras
+IBM SPSS Modeler extension for integrating with Deep Learning Neural Networks using the Keras API
