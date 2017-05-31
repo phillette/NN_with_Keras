@@ -1,4 +1,5 @@
-script_details = ("keras_nn.py",0.1)
+# encoding=utf-8
+script_details = ("keras_nn.py",0.3)
 
 import sys
 import os
@@ -11,7 +12,7 @@ layer_types = []
 layer_parameters = []
 layer_extras = []
 
-MAX_LAYERS=6
+MAX_LAYERS=10
 for layer_index in range(0,MAX_LAYERS):
     layer_types.append("none")
     layer_parameters.append("")
@@ -25,8 +26,12 @@ if len(sys.argv) > 1 and sys.argv[1] == "-test":
     fields = ["sepal_length","sepal_width","petal_length","petal_width"]
     target = "species"
     backend = 'theano'
-    num_epochs = 1000
+    num_epochs = 200
+    batch_size = 32
     learning_rate = 0.01
+    loss_function = 'categorical_crossentropy'
+    optimizer = 'adam'
+    verbose = 1
     modelpath = "/tmp/dnn.model"
 
     layer_types[0] = 'dense'
@@ -52,6 +57,12 @@ else:
     target = '%%target%%'
     num_epochs = int('%%num_epochs%%')
     backend = '%%backend%%'
+    batch_size = int('%%batch_size%%')
+    verbose = 0
+    if '%%verbose%%' == 'Y':
+        verbose = 1
+    loss_function = '%%loss_function%%'
+    optimizer = '%%optimizer%%'
 
     layer_types[0] = '%%layer_0_type%%'
     layer_parameters[0] = '%%layer_0_parameter%%'
@@ -71,6 +82,18 @@ else:
     layer_types[5] = '%%layer_5_type%%'
     layer_parameters[5] = '%%layer_5_parameter%%'
     layer_extras[5] = '%%layer_5_extras%%'
+    layer_types[6] = '%%layer_6_type%%'
+    layer_parameters[6] = '%%layer_6_parameter%%'
+    layer_extras[6] = '%%layer_6_extras%%'
+    layer_types[7] = '%%layer_7_type%%'
+    layer_parameters[7] = '%%layer_7_parameter%%'
+    layer_extras[7] = '%%layer_7_extras%%'
+    layer_types[8] = '%%layer_8_type%%'
+    layer_parameters[8] = '%%layer_8_parameter%%'
+    layer_extras[8] = '%%layer_8_extras%%'
+    layer_types[9] = '%%layer_9_type%%'
+    layer_parameters[9] = '%%layer_9_parameter%%'
+    layer_extras[9] = '%%layer_9_extras%%'
 
     from os import tempnam
     modelpath = tempnam()
@@ -127,8 +150,6 @@ class LayerFactory(object):
             return Activation(*layer_pos_args, **layer_dict_args)
         if layer_type == 'reshape':
             return Reshape(*layer_pos_args, **layer_dict_args)
-        if layer_type == 'dense':
-            return Dense(*layer_pos_args, **layer_dict_args)
         if layer_type == 'dropout':
             return Dropout(*layer_pos_args,**layer_dict_args)
         raise Exception("Invalid layer type:"+layer_type)
@@ -160,13 +181,13 @@ for layer_index in range(0,MAX_LAYERS):
 
 model.add(Dense(len(target_values), activation="softmax"))
 
-model.compile(loss='categorical_crossentropy',
+model.compile(loss=loss_function,
               metrics=['accuracy'],
-              optimizer='adam')
+              optimizer=optimizer)
 
 # Build the model
 
-model.fit(X, y.as_matrix(), verbose=1, batch_size=1, nb_epoch=500)
+model.fit(X, y.as_matrix(), verbose=verbose, batch_size=batch_size, nb_epoch=num_epochs)
 
 model.save(os.path.join(modelpath,"model"))
 

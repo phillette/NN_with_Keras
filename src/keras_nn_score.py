@@ -1,4 +1,5 @@
-script_details = ("keras_nn_score.py",0.1)
+# encoding=utf-8
+# script_details = ("keras_nn_score.py",0.3)
 
 import json
 import sys
