@@ -1,5 +1,5 @@
 # encoding=utf-8
-script_details = ("keras_nn.py",0.3)
+script_details = ("keras_nn.py",0.5)
 
 import sys
 import os
@@ -22,26 +22,38 @@ if len(sys.argv) > 1 and sys.argv[1] == "-test":
     import os
     wd = os.getcwd()
     df = pd.read_csv("~/Datasets/iris.csv")
-    # specify predictors and target
-    fields = ["sepal_length","sepal_width","petal_length","petal_width"]
-    target = "species"
     backend = 'theano'
     num_epochs = 200
     batch_size = 32
-    learning_rate = 0.01
-    loss_function = 'categorical_crossentropy'
-    optimizer = 'adam'
-    verbose = 1
-    modelpath = "/tmp/dnn.model"
+    target_scaling = 'minmax'
+
+    if len(sys.argv) > 2 and sys.argv[2] == "regression":
+        fields = ["sepal_length", "sepal_width", "petal_length"]
+        target = "petal_width"
+        loss_function = 'mean_squared_error'
+        optimizer = 'adam'
+        verbose = 1
+        modelpath = "/tmp/dnn.model.reg"
+        modelmetadata_path = "/tmp/dnn.metadata.reg"
+        objective = "regression"
+    else:
+        fields = ["sepal_length","sepal_width","petal_length","petal_width"]
+        target = "species"
+        loss_function = 'categorical_crossentropy'
+        optimizer = 'adam'
+        verbose = 1
+        modelpath = "/tmp/dnn.model.class"
+        modelmetadata_path = "/tmp/dnn.metadata.class"
+        objective = "classification"
 
     layer_types[0] = 'dense'
     layer_parameters[0] = '16'
-    layer_extras[0] = "activation='tanh' W_regularizer=l2(0.001)"
+    layer_extras[0] = "activation='tanh', W_regularizer=l2(0.001)"
     layer_types[1] = 'dropout'
     layer_parameters[1] = '0.5'
     layer_extras[1] = ''
 
-    modelmetadata_path = "/tmp/dnn.metadata"
+
     import shutil
     try:
         shutil.rmtree(modelpath)
@@ -63,6 +75,8 @@ else:
         verbose = 1
     loss_function = '%%loss_function%%'
     optimizer = '%%optimizer%%'
+    objective = '%%objective%%'
+    target_scaling = '%%target_scaling%%'
 
     layer_types[0] = '%%layer_0_type%%'
     layer_parameters[0] = '%%layer_0_parameter%%'
@@ -107,20 +121,21 @@ from keras.models import Sequential
 from keras.layers import *
 from keras.regularizers import *
 
-def parseExtras(layer_args,extras):
-    pairs = extras.split()
-    for pair in pairs:
-        pos = pair.index("=")
-        if pos > 0:
-            name = pair[:pos]
-            value = pair[pos+1:]
-            if name not in layer_args:
-                layer_args[name] = eval(value)
+layerNames = {
+    'dense':'Dense',
+    'conv1d':'Conv1D',
+    'conv2d':'Conv2D',
+    'conv3d':'Conv3D',
+    'flatten':'Flatten',
+    'activation':'Activation',
+    'reshape':'Reshape',
+    'dropout':'Dropout',
+    'lambda':'Lambda',
+    'maxPooling1d':'MaxPooling1D',
+    'maxPooling2d':'MaxPooling2D',
+    'maxPooling3d':'MaxPooling3D'
+}
 
-def parseParameters(parameter_list,parameter):
-    pl = parameter.split(",")
-    for pv in pl:
-        parameter_list.append(eval(pv.strip()))
 
 class LayerFactory(object):
 
@@ -129,46 +144,60 @@ class LayerFactory(object):
         self.first_layer = True
 
     def createLayer(self,layer_type,layer_parameter,layer_extras):
-        layer_pos_args = []
-        parseParameters(layer_pos_args, layer_parameter)
-        layer_dict_args = {}
-        parseExtras(layer_dict_args,layer_extras)
         if self.first_layer:
-            layer_dict_args['input_shape'] = (self.predictor_count,)
+            if layer_extras:
+                layer_extras += ", "
+            layer_extras += 'input_shape=('+str(self.predictor_count)+',)'
             self.first_layer = False
-        if layer_type == 'dense':
-            return Dense(*layer_pos_args,**layer_dict_args)
-        if layer_type == 'conv1d':
-            return Conv1D(*layer_pos_args, **layer_dict_args)
-        if layer_type == 'conv2d':
-            return Conv2D(*layer_pos_args, **layer_dict_args)
-        if layer_type == 'conv3d':
-            return Conv3D(*layer_pos_args, **layer_dict_args)
-        if layer_type == 'flatten':
-            return Flatten(*layer_pos_args, **layer_dict_args)
-        if layer_type == 'activation':
-            return Activation(*layer_pos_args, **layer_dict_args)
-        if layer_type == 'reshape':
-            return Reshape(*layer_pos_args, **layer_dict_args)
-        if layer_type == 'dropout':
-            return Dropout(*layer_pos_args,**layer_dict_args)
-        raise Exception("Invalid layer type:"+layer_type)
+        if layer_type not in layerNames:
+            raise Exception("Invalid layer type:" + layer_type)
+        ctr = layerNames[layer_type]+"("
+        if layer_parameter:
+            ctr += layer_parameter
+        if layer_extras:
+            if layer_parameter:
+                ctr += ","
+            ctr += layer_extras
+        ctr += ")"
+        return eval(ctr)
 
-# get the list of unique target values
-target_values = list(df[target].unique())
 
-# one hot encoding step
-
-def encode(c,target_value):
-    if c == target_value:
-        return 1
-    else:
-        return 0
 
 y = pd.DataFrame()
 
-for target_value in target_values:
-    y[target_value] = df.apply(lambda row:encode(row[target],target_value),axis=1).astype(int)
+model_metadata = { "predictors": fields, "target":target }
+
+target_values = []
+
+if objective == "classification":
+
+    # get the list of unique target values
+    target_values = list(df[target].unique())
+
+    # one hot encoding step
+    def encode(c, target_value):
+        if c == target_value:
+            return 1
+        else:
+            return 0
+
+    for target_value in target_values:
+        y[target_value] = df.apply(lambda row:encode(row[target],target_value),axis=1).astype(int)
+
+    model_metadata["target_values"] = target_values
+
+if objective == "regression":
+
+    if target_scaling == 'minmax':
+        min = df[target].min()
+        max = df[target].max()
+
+        y["target"] = df.apply(lambda row:(row[target] - min)/(max-min),axis=1).astype(float)
+
+        model_metadata["target_max"] = max
+        model_metadata["target_min"] = min
+    else:
+        y["target"] = df.apply(lambda row: row[target], axis=1).astype(float)
 
 X = df.as_matrix(fields)
 
@@ -177,9 +206,12 @@ lf = LayerFactory(len(fields))
 
 for layer_index in range(0,MAX_LAYERS):
     if layer_types[layer_index] != 'none':
-        model.add(lf.createLayer(layer_types[layer_index],layer_parameters[layer_index],layer_extras[layer_index]))
+        model.add(lf.createLayer(layer_types[layer_index],layer_parameters[layer_index].strip(),layer_extras[layer_index].strip()))
 
-model.add(Dense(len(target_values), activation="softmax"))
+if objective == "classification":
+    model.add(Dense(len(target_values), activation="softmax"))
+else:
+    model.add(Dense(1))
 
 model.compile(loss=loss_function,
               metrics=['accuracy'],
@@ -190,8 +222,6 @@ model.compile(loss=loss_function,
 model.fit(X, y.as_matrix(), verbose=verbose, batch_size=batch_size, nb_epoch=num_epochs)
 
 model.save(os.path.join(modelpath,"model"))
-
-model_metadata = { "predictors": fields, "target":target, "target_values":target_values }
 
 s_metadata = json.dumps(model_metadata)
 
