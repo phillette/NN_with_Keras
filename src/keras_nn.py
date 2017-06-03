@@ -1,58 +1,98 @@
 # encoding=utf-8
-script_details = ("keras_nn.py",0.5)
+script_details = ("keras_nn.py",0.6)
 
 import sys
 import os
 import pandas as pd
 import json
 
+class RedirectStream(object):
+
+  def __init__(self, fname):
+    try:
+        self.dupf = open(fname,"wb")
+    except:
+        self.dupf = None
+
+  def write(self, x):
+    if self.dupf:
+        self.dupf.write(x)
+        self.dupf.flush()
+
+  def flush(self):
+    pass
+
 ascontext=None
 
 layer_types = []
 layer_parameters = []
-layer_extras = []
 
 MAX_LAYERS=10
 for layer_index in range(0,MAX_LAYERS):
     layer_types.append("none")
     layer_parameters.append("")
-    layer_extras.append("")
 
 if len(sys.argv) > 1 and sys.argv[1] == "-test":
     import os
     wd = os.getcwd()
-    df = pd.read_csv("~/Datasets/iris.csv")
+
     backend = 'theano'
-    num_epochs = 200
+    num_epochs = 15
     batch_size = 32
     target_scaling = 'minmax'
+    validation_split = 0.2
+    input_type = 'predictor_fields'
+    datafile = "~/Datasets/iris.csv"
+    verbose = 1
+    redirect_output = False
+    output_path = "/tmp/test.log"
+
+    record_stats = True
+    stats_output_path = '/tmp/metrics.csv'
 
     if len(sys.argv) > 2 and sys.argv[2] == "regression":
         fields = ["sepal_length", "sepal_width", "petal_length"]
         target = "petal_width"
         loss_function = 'mean_squared_error'
         optimizer = 'adam'
-        verbose = 1
         modelpath = "/tmp/dnn.model.reg"
         modelmetadata_path = "/tmp/dnn.metadata.reg"
         objective = "regression"
+        layer_types[0] = 'dense'
+        layer_parameters[0] = "16, activation='tanh', W_regularizer=l2(0.001)"
+    elif len(sys.argv) > 2 and sys.argv[2] == "text_classification":
+        num_epochs = 4
+        objective = "classification"
+        input_type = 'text'
+        datafile = "~/Datasets/movie-pang02.csv"
+        text_field = "text"
+        target = "class"
+        modelpath = "/tmp/dnn.model.txtclass"
+        modelmetadata_path = "/tmp/dnn.metadata.txtclass"
+        loss_function = 'categorical_crossentropy'
+        optimizer = 'adam'
+        vocabulary_size = 20000
+        word_limit = 200
+        layer_types[0] = 'embedding'
+        layer_parameters[0] = '20000, 128'
+
+        layer_types[1] = 'lstm'
+        layer_parameters[1] = '128, dropout=0.2, recurrent_dropout=0.2'
     else:
         fields = ["sepal_length","sepal_width","petal_length","petal_width"]
         target = "species"
         loss_function = 'categorical_crossentropy'
         optimizer = 'adam'
-        verbose = 1
+
         modelpath = "/tmp/dnn.model.class"
         modelmetadata_path = "/tmp/dnn.metadata.class"
         objective = "classification"
+        layer_types[0] = 'dense'
+        layer_parameters[0] = "16, activation='tanh', W_regularizer=l2(0.001)"
+        layer_types[1] = '_custom_'
+        layer_parameters[1] = 'Dropout(0.5)'
 
-    layer_types[0] = 'dense'
-    layer_parameters[0] = '16'
-    layer_extras[0] = "activation='tanh', W_regularizer=l2(0.001)"
-    layer_types[1] = 'dropout'
-    layer_parameters[1] = '0.5'
-    layer_extras[1] = ''
-
+    df = pd.read_csv(datafile)
 
     import shutil
     try:
@@ -70,9 +110,25 @@ else:
     num_epochs = int('%%num_epochs%%')
     backend = '%%backend%%'
     batch_size = int('%%batch_size%%')
+    input_type = '%%input_type%%'
+    text_field = '%%text_field%%'
+    vocabulary_size = int('%%vocabulary_size%%')
+    word_limit = int('%%word_limit%%')
+    validation_split = float('%%validation_split%%')
     verbose = 0
     if '%%verbose%%' == 'Y':
         verbose = 1
+
+    redirect_output = False
+    if '%%redirect_output%%' == 'Y':
+        redirect_output = True
+    output_path = '%%output_path%%'
+
+    record_stats = False
+    if '%%record_stats%%' == 'Y':
+        record_stats = True
+    stats_output_path = '%%stats_output_path%%'
+
     loss_function = '%%loss_function%%'
     optimizer = '%%optimizer%%'
     objective = '%%objective%%'
@@ -80,39 +136,43 @@ else:
 
     layer_types[0] = '%%layer_0_type%%'
     layer_parameters[0] = '%%layer_0_parameter%%'
-    layer_extras[0] = '%%layer_0_extras%%'
+
     layer_types[1] = '%%layer_1_type%%'
     layer_parameters[1] = '%%layer_1_parameter%%'
-    layer_extras[1] = '%%layer_1_extras%%'
+
     layer_types[2] = '%%layer_2_type%%'
     layer_parameters[2] = '%%layer_2_parameter%%'
-    layer_extras[2] = '%%layer_2_extras%%'
+
     layer_types[3] = '%%layer_3_type%%'
     layer_parameters[3] = '%%layer_3_parameter%%'
-    layer_extras[3] = '%%layer_3_extras%%'
+
     layer_types[4] = '%%layer_4_type%%'
     layer_parameters[4] = '%%layer_4_parameter%%'
-    layer_extras[4] = '%%layer_4_extras%%'
+
     layer_types[5] = '%%layer_5_type%%'
     layer_parameters[5] = '%%layer_5_parameter%%'
-    layer_extras[5] = '%%layer_5_extras%%'
+
     layer_types[6] = '%%layer_6_type%%'
     layer_parameters[6] = '%%layer_6_parameter%%'
-    layer_extras[6] = '%%layer_6_extras%%'
+
     layer_types[7] = '%%layer_7_type%%'
     layer_parameters[7] = '%%layer_7_parameter%%'
-    layer_extras[7] = '%%layer_7_extras%%'
+
     layer_types[8] = '%%layer_8_type%%'
     layer_parameters[8] = '%%layer_8_parameter%%'
-    layer_extras[8] = '%%layer_8_extras%%'
+
     layer_types[9] = '%%layer_9_type%%'
     layer_parameters[9] = '%%layer_9_parameter%%'
-    layer_extras[9] = '%%layer_9_extras%%'
 
     from os import tempnam
     modelpath = tempnam()
     os.mkdir(modelpath)
     df = df.toPandas()
+
+if redirect_output:
+    r = RedirectStream(output_path)
+    sys.stdout = r
+    sys.stderr = r
 
 if backend != "default":
     os.environ["KERAS_BACKEND"] = backend
@@ -133,7 +193,9 @@ layerNames = {
     'lambda':'Lambda',
     'maxPooling1d':'MaxPooling1D',
     'maxPooling2d':'MaxPooling2D',
-    'maxPooling3d':'MaxPooling3D'
+    'maxPooling3d':'MaxPooling3D',
+    'embedding':'Embedding',
+    'lstm':'LSTM'
 }
 
 
@@ -143,25 +205,32 @@ class LayerFactory(object):
         self.predictor_count = predictor_count
         self.first_layer = True
 
-    def createLayer(self,layer_type,layer_parameter,layer_extras):
+    def createLayer(self,layer_type,layer_parameter):
+        if layer_type == "_custom_":
+            self.first_layer = False
+            return eval(layer_parameter)
         if self.first_layer:
-            if layer_extras:
-                layer_extras += ", "
-            layer_extras += 'input_shape=('+str(self.predictor_count)+',)'
+            if layer_parameter:
+                layer_parameter += ", "
+            layer_parameter += 'input_shape=('+str(self.predictor_count)+',)'
             self.first_layer = False
         if layer_type not in layerNames:
             raise Exception("Invalid layer type:" + layer_type)
         ctr = layerNames[layer_type]+"("
         if layer_parameter:
             ctr += layer_parameter
-        if layer_extras:
-            if layer_parameter:
-                ctr += ","
-            ctr += layer_extras
         ctr += ")"
         return eval(ctr)
 
-
+if input_type == "text":
+    from keras.preprocessing.text import one_hot
+    from keras.preprocessing.sequence import pad_sequences
+    X = pad_sequences(df.apply(lambda row:one_hot(row[text_field].encode("utf-8"),vocabulary_size),axis=1),word_limit)
+    fields = [text_field]
+    num_features = word_limit
+else:
+    X = df.as_matrix(fields)
+    num_features = len(fields)
 
 y = pd.DataFrame()
 
@@ -199,14 +268,14 @@ if objective == "regression":
     else:
         y["target"] = df.apply(lambda row: row[target], axis=1).astype(float)
 
-X = df.as_matrix(fields)
+
 
 model = Sequential()
-lf = LayerFactory(len(fields))
+lf = LayerFactory(num_features)
 
 for layer_index in range(0,MAX_LAYERS):
     if layer_types[layer_index] != 'none':
-        model.add(lf.createLayer(layer_types[layer_index],layer_parameters[layer_index].strip(),layer_extras[layer_index].strip()))
+        model.add(lf.createLayer(layer_types[layer_index],layer_parameters[layer_index].strip()))
 
 if objective == "classification":
     model.add(Dense(len(target_values), activation="softmax"))
@@ -219,7 +288,24 @@ model.compile(loss=loss_function,
 
 # Build the model
 
-model.fit(X, y.as_matrix(), verbose=verbose, batch_size=batch_size, nb_epoch=num_epochs)
+h = model.fit(X, y.as_matrix(), verbose=verbose, batch_size=batch_size, nb_epoch=num_epochs, validation_split=validation_split)
+if record_stats:
+    keys = ["epoch"]
+    keys += sorted(key for key in h.history if isinstance(h.history[key],list))
+    sf = open(stats_output_path,"w")
+    sf.write(",".join(keys)+chr(10))
+    for e in range(0,num_epochs):
+        vals = []
+        for k in keys:
+            if k == "epoch":
+                vals.append(str(e+1))
+            else:
+                vc = h.history[k]
+                if e < len(vc):
+                    vals.append(str(vc[e]))
+                else:
+                    vals.append("?")
+        sf.write(",".join(vals)+chr(10))
 
 model.save(os.path.join(modelpath,"model"))
 

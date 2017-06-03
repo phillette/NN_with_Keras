@@ -1,5 +1,5 @@
 # encoding=utf-8
-script_details = ("keras_nn_score.py",0.5)
+script_details = ("keras_nn_score.py",0.6)
 
 import json
 import sys
@@ -14,21 +14,35 @@ ascontext=None
 if len(sys.argv) > 1 and sys.argv[1] == "-test":
     import os
     wd = os.getcwd()
-    df = pd.read_csv("~/Datasets/iris.csv")
+
     backend = 'theano'
     if len(sys.argv) > 2 and sys.argv[2] == "regression":
+        input_type = 'predictor_fields'
         fields = ["sepal_length", "sepal_width", "petal_length"]
         target = "petal_width"
         modelpath = "/tmp/dnn.model.reg"
         modelmetadata_path = "/tmp/dnn.metadata.reg"
         objective = "regression"
+        datafile = "~/Datasets/iris.csv"
+    elif len(sys.argv) > 2 and sys.argv[2] == "text_classification":
+        input_type = 'text'
+        text_field = 'text'
+        datafile = "~/Datasets/movie-pang02.csv"
+        target = "class"
+        modelpath = "/tmp/dnn.model.txtclass"
+        modelmetadata_path = "/tmp/dnn.metadata.txtclass"
+        vocabulary_size = 20000
+        word_limit = 200
+        objective = "classification"
     else:
+        input_type = 'predictor_fields'
         fields = ["sepal_length","sepal_width","petal_length","petal_width"]
         target = "species"
-        modelpath = "/tmp/dnn.model"
-        modelmetadata_path = "/tmp/dnn.metadata"
+        modelpath = "/tmp/dnn.model.class"
+        modelmetadata_path = "/tmp/dnn.metadata.class"
         objective = "classification"
-
+        datafile = "~/Datasets/iris.csv"
+    df = pd.read_csv(datafile)
 else:
     import spss.pyspark.runtime
     ascontext = spss.pyspark.runtime.getContext()
@@ -37,7 +51,11 @@ else:
     df = ascontext.getSparkInputData().toPandas()
     target = '%%target%%'
     backend = '%%backend%%'
+    input_type = '%%input_type%%'
     fields =  map(lambda x: x.strip(),"%%fields%%".split(","))
+    text_field = '%%text_field%%'
+    vocabulary_size = int('%%vocabulary_size%%')
+    word_limit = int('%%word_limit%%')
     schema = ascontext.getSparkInputSchema()
     objective = '%%objective%%'
 
@@ -64,7 +82,12 @@ if ascontext:
 else:
     model_metadata = json.loads(open(modelmetadata_path,"r").read())
 
-dataarr=np.array(df[fields])
+if input_type == "predictor_fields":
+    dataarr=np.array(df[fields])
+else:
+    from keras.preprocessing.text import one_hot
+    from keras.preprocessing.sequence import pad_sequences
+    dataarr = pad_sequences(df.apply(lambda row: one_hot(row[text_field].encode("utf-8"), vocabulary_size), axis=1), word_limit)
 
 score_model = load_model(os.path.join(modelpath,"model"))
 
