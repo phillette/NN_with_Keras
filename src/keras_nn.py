@@ -1,5 +1,5 @@
 # encoding=utf-8
-script_details = ("keras_nn.py",0.6)
+script_details = ("keras_nn.py",0.7)
 
 import sys
 import os
@@ -49,6 +49,8 @@ if len(sys.argv) > 1 and sys.argv[1] == "-test":
 
     record_stats = True
     stats_output_path = '/tmp/metrics.csv'
+    order_field = ''
+    override_output_layer = ""
 
     if len(sys.argv) > 2 and sys.argv[2] == "regression":
         fields = ["sepal_length", "sepal_width", "petal_length"]
@@ -60,6 +62,25 @@ if len(sys.argv) > 1 and sys.argv[1] == "-test":
         objective = "regression"
         layer_types[0] = 'dense'
         layer_parameters[0] = "16, activation='tanh', W_regularizer=l2(0.001)"
+    elif len(sys.argv) > 2 and sys.argv[2] == "time_series":
+        fields = []
+        target = "value"
+        loss_function = 'mean_squared_error'
+        optimizer = 'adam'
+        modelpath = "/tmp/dnn.model.timeseries"
+        modelmetadata_path = "/tmp/dnn.metadata.timeseries"
+        objective = "time_series"
+        window_size=50
+        look_ahread=10
+        layer_types[0] = 'lstm'
+        layer_parameters[0] = "50, return_sequences=True"
+        layer_types[1] = 'dropout'
+        layer_parameters[1] = "0.2"
+        layer_types[2] = 'lstm'
+        layer_parameters[2] = "100"
+        layer_types[3] = 'dropout'
+        layer_parameters[3] = "0.2"
+        datafile = "~/Datasets/sinwave.csv"
     elif len(sys.argv) > 2 and sys.argv[2] == "text_classification":
         num_epochs = 4
         objective = "classification"
@@ -75,9 +96,20 @@ if len(sys.argv) > 1 and sys.argv[1] == "-test":
         word_limit = 200
         layer_types[0] = 'embedding'
         layer_parameters[0] = '20000, 128'
-
         layer_types[1] = 'lstm'
         layer_parameters[1] = '128, dropout=0.2, recurrent_dropout=0.2'
+    elif len(sys.argv) > 2 and sys.argv[2] == "unsupervised":
+        fields = ["sepal_length", "sepal_width", "petal_length", "petal_width"]
+        target = ""
+        loss_function = 'mean_squared_error'
+        optimizer = 'adam'
+        modelpath = "/tmp/dnn.model.unsupervised"
+        modelmetadata_path = "/tmp/dnn.metadata.unsupervised"
+        objective = "unsupervised"
+        num_epochs=100
+        layer_types[0] = 'dense'
+        layer_parameters[0] = "3, activation='softmax'"
+        override_output_layer = "1"
     else:
         fields = ["sepal_length","sepal_width","petal_length","petal_width"]
         target = "species"
@@ -112,9 +144,12 @@ else:
     batch_size = int('%%batch_size%%')
     input_type = '%%input_type%%'
     text_field = '%%text_field%%'
+    order_field = '%%order_field%%'
     vocabulary_size = int('%%vocabulary_size%%')
     word_limit = int('%%word_limit%%')
     validation_split = float('%%validation_split%%')
+    window_size = int('%%window_size%%')
+    look_ahead = int('%%look_ahead%%')
     verbose = 0
     if '%%verbose%%' == 'Y':
         verbose = 1
@@ -133,6 +168,9 @@ else:
     optimizer = '%%optimizer%%'
     objective = '%%objective%%'
     target_scaling = '%%target_scaling%%'
+
+    override_output_layer = '%%override_output_layer%%'
+    num_unsupervised_outputs = int('%%num_unsupervised_outputs%%')
 
     layer_types[0] = '%%layer_0_type%%'
     layer_parameters[0] = '%%layer_0_parameter%%'
@@ -169,6 +207,9 @@ else:
     os.mkdir(modelpath)
     df = df.toPandas()
 
+if order_field:
+    df = df.sort([order_field],ascending=[1])
+
 if redirect_output:
     r = RedirectStream(output_path)
     sys.stdout = r
@@ -201,8 +242,8 @@ layerNames = {
 
 class LayerFactory(object):
 
-    def __init__(self,predictor_count):
-        self.predictor_count = predictor_count
+    def __init__(self,input_shape):
+        self.input_shape = input_shape
         self.first_layer = True
 
     def createLayer(self,layer_type,layer_parameter):
@@ -212,7 +253,7 @@ class LayerFactory(object):
         if self.first_layer:
             if layer_parameter:
                 layer_parameter += ", "
-            layer_parameter += 'input_shape=('+str(self.predictor_count)+',)'
+            layer_parameter += 'input_shape='+str(self.input_shape)
             self.first_layer = False
         if layer_type not in layerNames:
             raise Exception("Invalid layer type:" + layer_type)
@@ -222,23 +263,36 @@ class LayerFactory(object):
         ctr += ")"
         return eval(ctr)
 
+# Define the input numpy matrix
+
 if input_type == "text":
     from keras.preprocessing.text import one_hot
     from keras.preprocessing.sequence import pad_sequences
     X = pad_sequences(df.apply(lambda row:one_hot(row[text_field].encode("utf-8"),vocabulary_size),axis=1),word_limit)
     fields = [text_field]
-    num_features = word_limit
+    input_shape = (word_limit,)
+elif objective == "time_series":
+    data = df[target].tolist()
+    sequences = []
+    for index in range(len(data) - (window_size+1)):
+        sequences.append(data[index: index + window_size+1])
+    seqarr = np.array(sequences)
+    X = seqarr[:,:-1]
+    X = np.reshape(X, (X.shape[0], X.shape[1], 1))
+    input_shape = (window_size,1)
 else:
     X = df.as_matrix(fields)
-    num_features = len(fields)
-
-y = pd.DataFrame()
+    input_shape = (len(fields),)
 
 model_metadata = { "predictors": fields, "target":target }
+
+# Define the target numpy matrix
 
 target_values = []
 
 if objective == "classification":
+
+    y = pd.DataFrame()
 
     # get the list of unique target values
     target_values = list(df[target].unique())
@@ -254,9 +308,10 @@ if objective == "classification":
         y[target_value] = df.apply(lambda row:encode(row[target],target_value),axis=1).astype(int)
 
     model_metadata["target_values"] = target_values
+    y = y.as_matrix()
 
-if objective == "regression":
-
+elif objective == "regression":
+    y = pd.DataFrame()
     if target_scaling == 'minmax':
         min = df[target].min()
         max = df[target].max()
@@ -268,19 +323,36 @@ if objective == "regression":
     else:
         y["target"] = df.apply(lambda row: row[target], axis=1).astype(float)
 
+    y = y.as_matrix()
 
+elif objective == "time_series":
+    y = seqarr[:,-1]
+
+elif objective == "unsupervised":
+    y = X[:,:]
+
+else:
+    raise Exception("Unknown objective:"+objective)
+
+# Construct the model and add requested layers
 
 model = Sequential()
-lf = LayerFactory(num_features)
+lf = LayerFactory(input_shape)
 
 for layer_index in range(0,MAX_LAYERS):
     if layer_types[layer_index] != 'none':
         model.add(lf.createLayer(layer_types[layer_index],layer_parameters[layer_index].strip()))
 
+# Add an implicit output layer
+
 if objective == "classification":
     model.add(Dense(len(target_values), activation="softmax"))
+elif objective == "unsupervised":
+    model.add(Dense(len(fields), activation="linear"))
 else:
     model.add(Dense(1))
+
+# Specify the loss function and optimizer, get ready to build
 
 model.compile(loss=loss_function,
               metrics=['accuracy'],
@@ -288,7 +360,10 @@ model.compile(loss=loss_function,
 
 # Build the model
 
-h = model.fit(X, y.as_matrix(), verbose=verbose, batch_size=batch_size, nb_epoch=num_epochs, validation_split=validation_split)
+h = model.fit(X, y, verbose=verbose, batch_size=batch_size, nb_epoch=num_epochs, validation_split=validation_split)
+
+# Write metrics to file if requested
+
 if record_stats:
     keys = ["epoch"]
     keys += sorted(key for key in h.history if isinstance(h.history[key],list))
@@ -306,6 +381,23 @@ if record_stats:
                 else:
                     vals.append("?")
         sf.write(",".join(vals)+chr(10))
+
+# For unsupervised learning, if requested convert to a copy of the model comprising
+# layers up to the specified output layer
+
+if objective == "unsupervised" and override_output_layer != "none":
+    originalmodel = model
+    model = Sequential()
+    lf = LayerFactory(input_shape)
+
+    for layer_index in range(0, int(override_output_layer)):
+        if layer_types[layer_index] != 'none':
+            layer = lf.createLayer(layer_types[layer_index], layer_parameters[layer_index].strip())
+            original_layer = originalmodel.get_layer(index=layer_index)
+            layer.set_weights(original_layer.get_weights())
+            model.add(layer)
+
+# Persist the model and model metadata
 
 model.save(os.path.join(modelpath,"model"))
 
