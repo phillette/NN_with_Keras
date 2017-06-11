@@ -1,5 +1,5 @@
 # encoding=utf-8
-script_details = ("keras_nn_score.py",0.7)
+script_details = ("keras_nn_score.py",0.8)
 
 import json
 import sys
@@ -12,55 +12,9 @@ from keras.models import load_model
 ascontext=None
 
 if len(sys.argv) > 1 and sys.argv[1] == "-test":
-    import os
-    wd = os.getcwd()
-    order_field = ''
-    backend = 'theano'
-    if len(sys.argv) > 2 and sys.argv[2] == "regression":
-        input_type = 'predictor_fields'
-        fields = ["sepal_length", "sepal_width", "petal_length"]
-        target = "petal_width"
-        modelpath = "/tmp/dnn.model.reg"
-        modelmetadata_path = "/tmp/dnn.metadata.reg"
-        objective = "regression"
-        datafile = "~/Datasets/iris.csv"
-    elif len(sys.argv) > 2 and sys.argv[2] == "text_classification":
-        input_type = 'text'
-        text_field = 'text'
-        datafile = "~/Datasets/movie-pang02.csv"
-        target = "class"
-        modelpath = "/tmp/dnn.model.txtclass"
-        modelmetadata_path = "/tmp/dnn.metadata.txtclass"
-        vocabulary_size = 20000
-        word_limit = 200
-        objective = "classification"
-    elif len(sys.argv) > 2 and sys.argv[2] == "time_series":
-        input_type = 'predictor_fields'
-        target = 'value'
-        datafile = "~/Datasets/sinwave.csv"
-        modelpath = "/tmp/dnn.model.timeseries"
-        modelmetadata_path = "/tmp/dnn.metadata.timeseries"
-        objective = "time_series"
-        window_size = 50
-        look_ahead = 10
-    elif len(sys.argv) > 2 and sys.argv[2] == "unsupervised":
-        input_type = 'predictor_fields'
-        fields = ["sepal_length", "sepal_width", "petal_length", "petal_width"]
-        target = ''
-        datafile = "~/Datasets/iris.csv"
-        modelpath = "/tmp/dnn.model.unsupervised"
-        modelmetadata_path = "/tmp/dnn.metadata.unsupervised"
-        objective = "unsupervised"
-        num_unsupervised_outputs = 3
-        override_output_layer = "1"
-    else:
-        input_type = 'predictor_fields'
-        fields = ["sepal_length","sepal_width","petal_length","petal_width"]
-        target = "species"
-        modelpath = "/tmp/dnn.model.class"
-        modelmetadata_path = "/tmp/dnn.metadata.class"
-        objective = "classification"
-        datafile = "~/Datasets/iris.csv"
+    datafile = "%%datafile%%"
+    modelpath = "%%modelpath%%"
+    modelmetadata_path = "%%modelmetadata_path%%"
     df = pd.read_csv(datafile)
 else:
     import spss.pyspark.runtime
@@ -68,20 +22,20 @@ else:
     sc = ascontext.getSparkContext()
     sqlCtx = ascontext.getSparkSQLContext()
     df = ascontext.getSparkInputData().toPandas()
-    target = '%%target%%'
-    backend = '%%backend%%'
-    input_type = '%%input_type%%'
-    fields =  map(lambda x: x.strip(),"%%fields%%".split(","))
-    text_field = '%%text_field%%'
-    vocabulary_size = int('%%vocabulary_size%%')
-    word_limit = int('%%word_limit%%')
-    window_size = int('%%window_size%%')
-    look_ahead = int('%%look_ahead%%')
-    schema = ascontext.getSparkInputSchema()
-    objective = '%%objective%%'
-    order_field = '%%order_field%%'
-    override_output_layer = '%%override_output_layer%%'
-    num_unsupervised_outputs = int('%%num_unsupervised_outputs%%')
+
+target = '%%target%%'
+backend = '%%backend%%'
+input_type = '%%input_type%%'
+fields =  map(lambda x: x.strip(),"%%fields%%".split(","))
+text_field = '%%text_field%%'
+vocabulary_size = int('%%vocabulary_size%%')
+word_limit = int('%%word_limit%%')
+window_size = int('%%window_size%%')
+look_ahead = int('%%look_ahead%%')
+objective = '%%objective%%'
+order_field = '%%order_field%%'
+override_output_layer = '%%override_output_layer%%'
+num_unsupervised_outputs = int('%%num_unsupervised_outputs%%')
 
 prefix = "$R"
 prediction_field = prefix + "-" + target
@@ -92,6 +46,7 @@ if order_field:
     df = df.sort([order_field],ascending=[1])
 
 if ascontext:
+    schema = ascontext.getSparkInputSchema()
     from pyspark.sql.types import StructField, StructType, StringType, FloatType
     added_fields = []
     if objective == 'classification':
