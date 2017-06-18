@@ -26,7 +26,10 @@ else:
 target = '%%target%%'
 backend = '%%backend%%'
 input_type = '%%input_type%%'
-fields =  map(lambda x: x.strip(),"%%fields%%".split(","))
+fields = []
+if "%%fields%%" != "":
+    fields =  map(lambda x: x.strip(),"%%fields%%".split(","))
+
 text_field = '%%text_field%%'
 vocabulary_size = int('%%vocabulary_size%%')
 word_limit = int('%%word_limit%%')
@@ -57,8 +60,10 @@ if ascontext:
         added_fields.append(StructField(prediction_field, FloatType(), nullable=True))
         output_schema = StructType(schema.fields + added_fields)
     elif objective == 'time_series':
-        output_schema = StructType([StructField(step_field, FloatType(), nullable=True),
-                                    StructField(prediction_field, FloatType(), nullable=True)])
+        output_fields = [StructField(step_field, FloatType(), nullable=True),StructField(prediction_field, FloatType(), nullable=True)]
+        for field in fields:
+            output_fields.append(StructField("$R-"+field, FloatType(), nullable=True))
+        output_schema = StructType(output_fields)
     elif objective == 'unsupervised':
         num_outputs = len(fields)
         if override_output_layer != "none":
@@ -75,12 +80,28 @@ else:
     model_metadata = json.loads(open(modelmetadata_path,"r").read())
 
 if objective == "time_series":
-    data = df[target].tolist()
-    sequences = []
-    index = len(data) - window_size
-    sequences.append(data[index: index+window_size])
-    seqarr = np.array(sequences)
-    dataarr = np.reshape(seqarr, (1, window_size, 1))
+    num_series = 1 + len(fields)
+    data = [df[target].tolist()]
+    num_rows = len(data[0])
+    for field in fields:
+        data.append(df[field].tolist())
+
+    instances = []
+
+    index = num_rows - (window_size + 1)
+    windows = []
+    for windex in range(window_size):
+        series = []
+        for sindex in range(num_series):
+            series.append(data[sindex][index + windex])
+        windows.append(series)
+
+    instances.append(windows)
+
+    dataarr = np.array(instances)
+
+    dataarr = np.reshape(dataarr, (dataarr.shape[0], window_size, num_series))
+
 elif input_type == "predictor_fields":
     dataarr=np.array(df[fields])
 else:
@@ -91,13 +112,16 @@ else:
 score_model = load_model(os.path.join(modelpath,"model"))
 
 if objective == "time_series":
-    result = []
+    result = [[] for i in range(len(fields)+1)]
     steps = []
     for x in range(0,look_ahead):
         prediction = score_model.predict(dataarr)
+
+        for i in range(len(fields)+1):
+            result[i].append(prediction[0][i])
         dataarr = np.roll(dataarr,-1,axis=1)
-        dataarr[0][window_size-1] = [prediction]
-        result.append(prediction[0][0])
+        dataarr[0][window_size-1] = prediction[0]
+        # result.append(prediction[0][0])
         steps.append(float(x+1))
 else:
     result = score_model.predict(dataarr)
@@ -122,7 +146,11 @@ elif objective == "regression":
 elif objective == "time_series":
     df = pd.DataFrame()
     df[step_field] = steps
-    df[prediction_field] = result
+    df[prediction_field] = result[0]
+    i = 0
+    for field in fields:
+        i += 1
+        df["$R-"+field] = result[i]
 
 elif objective == "unsupervised":
     num_outputs = len(fields)

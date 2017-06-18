@@ -17,7 +17,7 @@ output_path = "/tmp/test.log"
 record_stats = True
 stats_output_path = '/tmp/metrics.csv'
 order_field = ''
-override_output_layer = "none"
+override_output_layer1 = "none"
 network_configuration = "manual"
 
 layer_0_type = 'none'
@@ -52,36 +52,48 @@ look_ahead = 0
 text_field = ''
 
 testname = sys.argv[1]
+modelpath = "/tmp/dnn.model"
+modelmetadata_path = "/tmp/dnn.metadata"
 
-if testname == "regression":
+if testname == "regression" or testname == "autoregression":
     fields = "sepal_length,sepal_width,petal_length"
     target = "petal_width"
     loss_function = 'mean_squared_error'
     optimizer = 'adam'
-    modelpath = "/tmp/dnn.model.reg"
-    modelmetadata_path = "/tmp/dnn.metadata.reg"
     objective = "regression"
-    layer_0_type = 'dense'
-    layer_0_parameter = '16, activation="tanh", W_regularizer=l2(0.001)'
+    if testname == "autoregression":
+        network_configuration = "auto"
+    else:
+        layer_0_type = 'dense'
+        layer_0_parameter = '16, activation="tanh", W_regularizer=l2(0.001)'
 elif testname == "time_series":
-    fields = []
-    target = "value"
+    fields = "wp2,wp3"
+    target = "wp1"
     loss_function = 'mean_squared_error'
     optimizer = 'adam'
-    modelpath = "/tmp/dnn.model.timeseries"
-    modelmetadata_path = "/tmp/dnn.metadata.timeseries"
     objective = "time_series"
     window_size=50
     look_ahread=10
-    layer_0_type = 'lstm'
-    layer_0_parameter = "50, return_sequences=True"
-    layer_1_type = 'dropout'
-    layer_1_parameter = "0.2"
-    layer_2_type = 'lstm'
-    layer_2_parameter = "100"
-    layer_3_type = 'dropout'
-    layer_3_parameter = "0.2"
-    datafile = "~/Datasets/sinwave.csv"
+    layer_0_type="convolution1d"
+    layer_0_parameter = 'nb_filter=20, filter_length=10, activation="relu"'
+    layer_1_type = "maxPooling1d"
+    layer_1_parameter = ""
+    layer_2_type = "convolution1d"
+    layer_2_parameter = 'nb_filter=20, filter_length=10, activation="relu"'
+    layer_3_type = "maxPooling1d"
+    layer_3_parameter = ""
+    layer_4_type = "flatten"
+    layer_4_parameter = ""
+    # layer_0_type = 'lstm'
+    # layer_0_parameter = "50, return_sequences=True"
+    # layer_1_type = 'dropout'
+    # layer_1_parameter = "0.2"
+    # layer_2_type = 'lstm'
+    # layer_2_parameter = "100"
+    # layer_3_type = 'dropout'
+    # layer_3_parameter = "0.2"
+    datafile = "~/Datasets/wind_forecasting.csv"
+    num_epochs=2
 elif testname == "text_classification":
     num_epochs = 4
     objective = "classification"
@@ -89,8 +101,6 @@ elif testname == "text_classification":
     datafile = "~/Datasets/movie-pang02.csv"
     text_field = "text"
     target = "class"
-    modelpath = "/tmp/dnn.model.txtclass"
-    modelmetadata_path = "/tmp/dnn.metadata.txtclass"
     loss_function = 'categorical_crossentropy'
     optimizer = 'adam'
     vocabulary_size = 20000
@@ -104,20 +114,16 @@ elif testname == "unsupervised":
     target = ""
     loss_function = 'mean_squared_error'
     optimizer = 'adam'
-    modelpath = "/tmp/dnn.model.unsupervised"
-    modelmetadata_path = "/tmp/dnn.metadata.unsupervised"
     objective = "unsupervised"
     num_epochs=100
     layer_0_type = 'dense'
-    layer_0_parameter = "3, activation='softmax'"
+    layer_0_parameter = '3, activation="softmax"'
     override_output_layer = "1"
 elif testname == "classification":
     fields = "sepal_length,sepal_width,petal_length,petal_width"
     target = "species"
     loss_function = 'categorical_crossentropy'
     optimizer = 'adam'
-    modelpath = "/tmp/dnn.model.class"
-    modelmetadata_path = "/tmp/dnn.metadata.class"
     objective = "classification"
     layer_0_type = 'dense'
     layer_0_parameter = '16, activation="tanh", W_regularizer=l2(0.001)'

@@ -5,7 +5,9 @@ import sys
 import os
 import pandas as pd
 import json
+import math
 
+# open("/tmp/test.py","w").write(open(__file__,"r").read())
 
 class RedirectStream(object):
     def __init__(self, fname):
@@ -27,16 +29,15 @@ ascontext = None
 
 MAX_LAYERS = 10
 
+# item_1033 = '%%item_1033%%'
+# item_1035 = '%%item_1035%%'
 
 class Configuration(object):
     def __init__(self):
-        self.layer_types = []
-        self.layer_parameters = []
-        for layer_index in range(0, MAX_LAYERS):
-            self.layer_types.append("none")
-            self.layer_parameters.append("")
-
-        self.fields = map(lambda x: x.strip(), "%%fields%%".split(","))
+        if "%%fields%%" == "":
+            self.fields = []
+        else:
+            self.fields = map(lambda x: x.strip(), "%%fields%%".split(","))
         self.target = '%%target%%'
         self.num_epochs = int('%%num_epochs%%')
         self.backend = '%%backend%%'
@@ -72,13 +73,25 @@ class Configuration(object):
         self.image_height = int('%%image_height%%')
         self.image_depth = int('%%image_depth%%')
 
-        self.override_output_layer = '%%override_output_layer%%'
+        self.override_output_layer = '%%override_output_layer1%%'
         self.num_unsupervised_outputs = int('%%num_unsupervised_outputs%%')
 
         self.target_values = []
-        self.seqarr = None
+        self.seqtargets = None
         self.model_metadata = {}
         self.input_shape = None
+
+        if self.loss_function == "auto":
+            if self.objective == "classification":
+                self.loss_function = "categorical_crossentropy"
+            else:
+                self.loss_function = "mean_squared_error"
+
+        self.layer_types = []
+        self.layer_parameters = []
+        for layer_index in range(0, MAX_LAYERS):
+            self.layer_types.append("none")
+            self.layer_parameters.append("")
 
     def manual(self):
         self.layer_types[0] = '%%layer_0_type%%'
@@ -116,13 +129,18 @@ class Configuration(object):
         self.layer_parameters[0] = '64, activation="sigmoid"'
 
     def auto(self):
+        # attempt to auto configure the layers - based on any information supplied
+
         if self.input_type == "text":
+
             self.layer_types[0] = 'embedding'
             self.layer_parameters[0] = '%d,128' % (self.vocabulary_size)
 
             self.layer_types[1] = 'lstm'
             self.layer_parameters[1] = '128, dropout=0.2, recurrent_dropout=0.2'
+
         elif self.objective == "time_series":
+
             self.layer_types[0] = 'lstm'
             self.layer_parameters[0] = '50, return_sequences=True'
 
@@ -134,10 +152,60 @@ class Configuration(object):
 
             self.layer_types[3] = 'dropout'
             self.layer_parameters[3] = '0.2'
+
+        elif self.objective == "unsupervised":
+
+            # try to create an auto-encoder to narrow down to 1/8 features...
+
+            num_inputs_by_2 = int(math.ceil(len(self.fields) / 2.0))
+            num_inputs_by_4 = int(math.ceil(num_inputs_by_2 / 2.0))
+            num_inputs_by_8 = int(math.ceil(num_inputs_by_4 / 2.0))
+
+            self.layer_types[0] = 'dense'
+            self.layer_parameters[0] = '%d, activation="relu"' % (num_inputs_by_2)
+
+            self.layer_types[1] = 'dense'
+            self.layer_parameters[1] = '%d, activation="relu"' % (num_inputs_by_4)
+
+            self.layer_types[2] = 'dense'
+            self.layer_parameters[2] = '%d, activation="relu"' % (num_inputs_by_8)
+
+            self.layer_types[3] = 'dense'
+            self.layer_parameters[3] = '%d, activation="relu"' % (num_inputs_by_4)
+
+            self.layer_types[4] = 'dense'
+            self.layer_parameters[4] = '%d, activation="relu"' % (num_inputs_by_2)
+
         else:
-            pass
+
+            # for classification and regression, create a NN with 2 hidden layers?
+            # reduce number of neurons by a factor of 3 at leach hidden layer
+
+            num_inputs_by_3 = int(math.ceil(len(self.fields)/3.0))
+            num_inputs_by_9 = int(math.ceil(num_inputs_by_3/3.0))
+
+
+            self.layer_types[0] = 'dense'
+            self.layer_parameters[0] = '%d, activation="sigmoid"'%(num_inputs_by_3)
+
+            if num_inputs_by_9 < num_inputs_by_3:
+
+                self.layer_types[1] = 'dense'
+                self.layer_parameters[1] = '%d, activation="sigmoid"' % (num_inputs_by_9)
+
+        self.dumpLayers("auto layers")
+
+    def dumpLayers(self,title):
+        print(title)
+        print("="*len(title))
+        for i in range(0,MAX_LAYERS):
+            if self.layer_types[i] != "none":
+                print("  Layer %d"%(i))
+                print("    %s(%s)"%(self.layer_types[i],self.layer_parameters[i]))
+        print("")
 
     def image_classifier(self):
+
         self.layer_types[0] = 'reshape'
         self.layer_parameters[0] = '(%d,%d,%d)' % (self.image_width, self.image_height, self.image_depth)
 
@@ -163,14 +231,35 @@ class Configuration(object):
             self.fields = [cfg.text_field]
             self.input_shape = (self.word_limit,)
         elif self.objective == "time_series":
-            data = df[self.target].tolist()
-            sequences = []
-            for index in range(len(data) - (self.window_size + 1)):
-                sequences.append(data[index: index + self.window_size + 1])
-            self.seqarr = np.array(sequences)
-            X = self.seqarr[:, :-1]
-            X = np.reshape(X, (X.shape[0], X.shape[1], 1))
-            self.input_shape = (self.window_size, 1)
+            num_series = 1+len(self.fields)
+            data = [df[self.target].tolist()]
+            num_rows = len(data[0])
+
+            for field in self.fields:
+                data.append(df[field].tolist())
+
+            instances = []
+            target_instances = []
+
+            for index in range(num_rows - (self.window_size+1)):
+                windows = []
+                for windex in range(self.window_size):
+                    series = []
+                    for sindex in range(num_series):
+                        series.append(data[sindex][index+windex])
+                    windows.append(series)
+                target_window = []
+                for sindex in range(num_series):
+                    target_window.append(data[sindex][index + self.window_size])
+                instances.append(windows)
+                target_instances.append(target_window)
+
+            X = np.array(instances)
+            self.seqtargets = np.array(target_instances)
+
+            X = np.reshape(X, (X.shape[0], self.window_size, num_series))
+            print(X.shape)
+            self.input_shape = (self.window_size, num_series)
         else:
             X = df.as_matrix(self.fields)
             self.input_shape = (len(self.fields),)
@@ -217,7 +306,7 @@ class Configuration(object):
             y = y.as_matrix()
 
         elif self.objective == "time_series":
-            y = self.seqarr[:, -1]
+            y = self.seqtargets
 
         elif self.objective == "unsupervised":
             y = X[:, :]
@@ -233,6 +322,8 @@ class Configuration(object):
             return "Dense(%d, activation='softmax')" % (len(self.target_values))
         elif cfg.objective == "unsupervised":
             return "Dense(%d, activation='linear')" % (len(self.fields))
+        elif cfg.objective == "time_series":
+            return "Dense("+str(len(self.fields)+1)+",activation='linear')"
         else:
             return "Dense(1)"
 
@@ -320,6 +411,7 @@ layerNames = {
     'conv1d': 'Conv1D',
     'conv2d': 'Conv2D',
     'conv3d': 'Conv3D',
+    'convolution1d' : 'Convolution1D',
     'flatten': 'Flatten',
     'activation': 'Activation',
     'reshape': 'Reshape',
@@ -339,6 +431,7 @@ class LayerFactory(object):
         self.code = ""
 
     def createLayer(self, layer_type, layer_parameter):
+        print(layer_type+":"+layer_parameter)
         if layer_type == "_custom_":
             self.first_layer = False
             return eval(layer_parameter)
@@ -414,7 +507,7 @@ print(code)
 
 # Build the model
 
-h = model.fit(X, y, verbose=cfg.verbose, batch_size=cfg.batch_size, nb_epoch=cfg.num_epochs,
+h = model.fit(X, y, verbose=cfg.verbose, batch_size=cfg.batch_size, epochs=cfg.num_epochs,
               validation_split=cfg.validation_split)
 
 # Write metrics to file if requested
