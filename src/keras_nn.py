@@ -1,5 +1,5 @@
 # encoding=utf-8
-script_details = ("keras_nn.py", 0.8)
+script_details = ("keras_nn.py", 0.81)
 
 import sys
 import os
@@ -379,6 +379,8 @@ else:
     os.mkdir(modelpath)
     df = df.toPandas()
 
+
+
 network_configuration = '%%network_configuration%%'
 cfg = Configuration()
 
@@ -402,9 +404,15 @@ if cfg.redirect_output:
 if cfg.backend != "default":
     os.environ["KERAS_BACKEND"] = cfg.backend
 
+import keras
 from keras.models import Sequential
 from keras.layers import *
 from keras.regularizers import *
+
+print("")
+print("Script        : "+str(script_details))
+print("Keras Version : "+keras.__version__)
+print("")
 
 layerNames = {
     'dense': 'Dense',

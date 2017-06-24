@@ -1,5 +1,5 @@
 # encoding=utf-8
-script_details = ("keras_nn_score.py",0.8)
+script_details = ("keras_nn_score.py",0.81)
 
 import json
 import sys
@@ -7,9 +7,15 @@ import pandas as pd
 import os
 import numpy as np
 
+import keras
 from keras.models import load_model
 
 ascontext=None
+
+print("")
+print("Script        : "+str(script_details))
+print("Keras Version : "+keras.__version__)
+print("")
 
 if len(sys.argv) > 1 and sys.argv[1] == "-test":
     datafile = "%%datafile%%"
