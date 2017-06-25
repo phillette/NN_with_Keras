@@ -1,5 +1,5 @@
 # encoding=utf-8
-script_details = ("keras_nn.py", 0.81)
+script_details = ("keras_nn.py", 0.82)
 
 import sys
 import os
