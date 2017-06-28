@@ -1,11 +1,12 @@
 # encoding=utf-8
-script_details = ("keras_nn.py", 0.82)
+script_details = ("keras_nn.py", 0.83)
 
 import sys
 import os
 import pandas as pd
 import json
 import math
+import numpy as np
 
 # open("/tmp/test.py","w").write(open(__file__,"r").read())
 
@@ -92,6 +93,35 @@ class Configuration(object):
         for layer_index in range(0, MAX_LAYERS):
             self.layer_types.append("none")
             self.layer_parameters.append("")
+
+    def check(self,df):
+        if self.objective == "regression" or self.objective == "classification":
+            if self.input_type == "text":
+                if not self.text_field:
+                    raise Exception("Please specify a text field")
+            else:
+                if not self.target:
+                    raise Exception("Please specify a target field")
+                if len(self.fields) == 0:
+                    raise Exception("Please specify at least one predictor field")
+                numericTarget = False
+                if df[self.target].dtype == np.number:
+                    numericTarget = True
+                if self.objective == "regression" and not numericTarget:
+                    raise Exception("Please use a numeric target field for the regression objective")
+                if self.objective == "classification" and numericTarget:
+                    raise Exception("Please use a string target field for the classification objective")
+
+        elif self.objective == "time_series":
+            if not self.target:
+                raise Exception("Please specify a target field")
+            if not self.order_field:
+                raise Exception("Please specify an index field")
+            if df[self.target].dtype != np.number:
+                raise Exception("Please use a numeric target field for the time series objective")
+        else:
+            if len(self.fields) == 0:
+                raise Exception("Please specify at least one predictor field")
 
     def manual(self):
         self.layer_types[0] = '%%layer_0_type%%'
@@ -359,7 +389,6 @@ if len(sys.argv) > 1 and sys.argv[1] == "-test":
     modelpath = "%%modelpath%%"
     modelmetadata_path = "%%modelmetadata_path%%"
     df = pd.read_csv(datafile)
-
     import shutil
 
     try:
@@ -379,10 +408,10 @@ else:
     os.mkdir(modelpath)
     df = df.toPandas()
 
-
-
 network_configuration = '%%network_configuration%%'
 cfg = Configuration()
+
+cfg.check(df) # will raise an exception if config is inconsistent
 
 if network_configuration == "manual":
     cfg.manual()
