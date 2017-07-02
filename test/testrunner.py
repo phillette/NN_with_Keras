@@ -11,4 +11,4 @@ def run(template,tmppath,vars):
             content = content.replace(gkey,str(gv[g]))
 
     open(tmppath,"w").write(content)
-    os.system("python %s -test"%(tmppath))
+    return 0==os.system("python %s -test"%(tmppath))
