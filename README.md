@@ -43,11 +43,37 @@ Image Classification Example
 
 This example is based on the mnist dataset (image classification) but using a small sample of the data to keep the repo and download size manageable.  The small sample will limit the performance that the classifier will achieve.
 
-[Download the example stream][5]
+[Download the example stream for image classification][5]
 
 [Download the example data (train)][6]
 
 [Download the example data (test)][7]
+
+---
+Sentiment Analysis Example
+----
+
+This example builds a model to predict the sentiment of a product review from the text.  Directions to obtain the data for this example are given in a comment in the stream.
+
+[Download the example stream for sentiment analysis][8]
+
+---
+Working with larger datasets
+----
+
+To be able to train with larger datasets, for example with the full mnist dataset (60k rows) you may need to make the following configuration changes to the modeler installation where you are running the keras node (if connecting to modeler server, make these changes in the modeler server installation, otherwise make these changes to your modeler client installation):
+
+(1) adding the following line to as/spark-conf/spark.conf
+
+spark.driver.maxResultSize=0
+
+(2) in config/jvm.cfg change the line:
+
+options, "-Xmx2048m"
+
+to:
+
+options, "-Xmx8192m"
 
 ---
 License
@@ -68,3 +94,4 @@ Contributors
 [5]:https://raw.githubusercontent.com/IBMPredictiveAnalytics/NN_with_Keras/master/examples/mnist.str
 [6]:https://raw.githubusercontent.com/IBMPredictiveAnalytics/NN_with_Keras/master/examples/mnist_smallsample_train.csv
 [7]:https://raw.githubusercontent.com/IBMPredictiveAnalytics/NN_with_Keras/master/examples/mnist_smallsample_test.csv
+[8]:https://raw.githubusercontent.com/IBMPredictiveAnalytics/NN_with_Keras/master/examples/sentiment.str
