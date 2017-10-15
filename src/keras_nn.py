@@ -1,5 +1,5 @@
 # encoding=utf-8
-script_details = ("keras_nn.py", 0.83)
+script_details = ("keras_nn.py", 0.84)
 
 import sys
 import os
@@ -38,7 +38,7 @@ class Configuration(object):
         if "%%fields%%" == "":
             self.fields = []
         else:
-            self.fields = map(lambda x: x.strip(), "%%fields%%".split(","))
+            self.fields = list(map(lambda x: x.strip(), "%%fields%%".split(",")))
         self.target = '%%target%%'
         self.num_epochs = int('%%num_epochs%%')
         self.backend = '%%backend%%'
@@ -255,8 +255,11 @@ class Configuration(object):
         if cfg.input_type == "text":
             from keras.preprocessing.text import one_hot
             from keras.preprocessing.sequence import pad_sequences
+            textconverter = lambda x: x
+            if sys.version_info[0] == 2:
+                textconverter = lambda x: x.encode("utf-8")
             X = pad_sequences(
-                df.apply(lambda row: one_hot(row[self.text_field].encode("utf-8"), self.vocabulary_size), axis=1),
+                df.apply(lambda row: one_hot(textconverter(row[self.text_field]), self.vocabulary_size), axis=1),
                 self.word_limit)
             self.fields = [cfg.text_field]
             self.input_shape = (self.word_limit,)
@@ -390,7 +393,6 @@ if len(sys.argv) > 1 and sys.argv[1] == "-test":
     modelmetadata_path = "%%modelmetadata_path%%"
     df = pd.read_csv(datafile)
     import shutil
-
     try:
         shutil.rmtree(modelpath)
     except:
@@ -398,14 +400,11 @@ if len(sys.argv) > 1 and sys.argv[1] == "-test":
     os.mkdir(modelpath)
 else:
     import spss.pyspark.runtime
-
     ascontext = spss.pyspark.runtime.getContext()
     sc = ascontext.getSparkContext()
     df = ascontext.getSparkInputData()
-    from os import tempnam
-
-    modelpath = tempnam()
-    os.mkdir(modelpath)
+    import tempfile
+    modelpath = tempfile.mkdtemp()
     df = df.toPandas()
 
 network_configuration = '%%network_configuration%%'

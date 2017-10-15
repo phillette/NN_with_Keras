@@ -1,5 +1,5 @@
 # encoding=utf-8
-script_details = ("keras_nn_score.py",0.83)
+script_details = ("keras_nn_score.py",0.84)
 
 import json
 import sys
@@ -34,7 +34,7 @@ backend = '%%backend%%'
 input_type = '%%input_type%%'
 fields = []
 if "%%fields%%" != "":
-    fields =  map(lambda x: x.strip(),"%%fields%%".split(","))
+    fields =  list(map(lambda x: x.strip(),"%%fields%%".split(",")))
 
 text_field = '%%text_field%%'
 vocabulary_size = int('%%vocabulary_size%%')
@@ -113,7 +113,10 @@ elif input_type == "predictor_fields":
 else:
     from keras.preprocessing.text import one_hot
     from keras.preprocessing.sequence import pad_sequences
-    dataarr = pad_sequences(df.apply(lambda row: one_hot(row[text_field].encode("utf-8"), vocabulary_size), axis=1), word_limit)
+    textconverter = lambda x:x
+    if sys.version_info[0] == 2:
+        textconverter = lambda x:x.encode("utf-8")
+    dataarr = pad_sequences(df.apply(lambda row: one_hot(textconverter(row[text_field]), vocabulary_size), axis=1), word_limit)
 
 score_model = load_model(os.path.join(modelpath,"model"))
 

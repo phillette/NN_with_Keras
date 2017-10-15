@@ -13,6 +13,8 @@ Requirements
 -   [Anaconda distribution of Python 2.7 (recommended)](https://www.continuum.io/downloads) or [Python 2.7](https://www.python.org/downloads)
 -   [Keras for Python 2.7 (+Theano or +Tensorflow)](https://keras.io/)
 
+There is now preliminary support for Python 3.5+
+
 More information here: [IBM Predictive Extensions][2]
 
 ---
@@ -29,7 +31,7 @@ If using v18.0 of SPSS Modeler, navigate to the options.cfg file (Windows defaul
 
 #### Installing Keras
 
-Your Python 2.7 installation must [have the Keras library and its dependencies, including Theano or Tensorflow installed](http://keras.io) for this extension to work.  Please follow the instructions provided by the Keras documentation.
+Your Python installation must [have the Keras library and its dependencies, including Theano or Tensorflow installed](http://keras.io) for this extension to work.  Please follow the instructions provided by the Keras documentation.
 
 #### Modeler Extension Installation
   1.	[Save the .mpe file][3] to your computer
